@@ -1,0 +1,1155 @@
+#R script for sponge microbiome analysis R version 4.4.1 (2024-06-14 ucrt)
+
+library(ape)
+library(data.table)
+library(phyloseq)
+library(DECIPHER)
+library(phangorn)
+library(ggplot2)
+library(ggpubr)
+library(reshape2)
+library(SummarizedExperiment)
+library(clusterProfiler)
+library(edgeR)
+library(enrichplot)
+library(tidybulk)
+library(curatedMetagenomicData)
+library(ggtree)
+library(ggtreeExtra)
+library(patchwork)
+library(MicrobiomeProfiler)
+library(MicrobiotaProcess)
+library(dplyr)
+library(tidyr)
+library(readr)
+library(ALDEx2)
+library(coin)
+library(tibble)
+library(microeco)           
+library(file2meco)
+
+#load the QIIME2 output files
+
+otuqza <- "tableNoFilt.qza"
+taxaqza <- "taxonomyNoFilt.qza"
+tree <- treeio::read.tree("tree.nwk")
+mapfile <- "metadata.txt"
+
+#make MicrobiotaProcess object
+
+mpse <- mp_import_qiime2(otuqza = otuqza, taxaqza = taxaqza, treeqza = tree, mapfilename = mapfile)
+mpse
+
+#filtering the object 
+
+mpse2 <- mpse %>%
+  dplyr::filter(!Phylum %in% c("p__") &
+                  !Kingdom %in% "d__Archaea" &
+                  !Family %in% "f__Mitochondria" &
+                  !Family %in% "f__Chloroplast" &
+                  !Genus %in% "g__Mitochondria" &
+                  !Genus %in% "g__Chloroplast"
+                
+                
+  ) %>%
+  mp_filter_taxa(.abundance = Abundance, min.abun = 1, min.prop = 0.1)                  
+mpse2
+otutree(mpse2) <- tree
+mpse2
+
+##################Rarefaction##############
+
+cols <- c('orange2', '#3399ff')
+mpse2 %<>%
+  mp_rrarefy(.abundance=Abundance) %>%
+  mp_cal_rarecurve(.abundance=RareAbundance, chunks=500)
+prare2 <- mpse2 %>%
+  mp_plot_rarecurve(
+    .rare = RareAbundanceRarecurve,
+    .alpha = c(Observe, Chao1, ACE),
+    .group = sample_type,
+    plot.group = TRUE
+  ) +
+  scale_color_manual(values = cols)+
+  scale_fill_manual(values = cols) +
+  theme_bw()+
+  theme(
+    axis.text=element_text(size=8), panel.grid=element_blank(),
+    strip.background = element_rect(colour=NA,fill="grey"),
+    strip.text.x = element_text(face="bold")
+  )
+
+prare2
+
+
+ggsave("rarecurve.jpg", prare2, 
+       width = 12, height = 5, dpi = 300, units = "in" )
+
+
+###########alpha_diversity#############
+
+mpse2 %<>% mp_cal_alpha(.abundance = RareAbundance)
+p_alpha <- mpse2 %>%
+  mp_plot_alpha(
+    .alpha = c(Observe, Chao1, Shannon, Pielou),
+    .group = sample_type,
+  ) +
+  scale_fill_manual(values=cols) +
+  scale_color_manual(values=cols) +
+  theme(
+    legend.position="none",
+    strip.background = element_rect(colour=NA, fill="grey")
+  )
+p_alpha
+
+ggsave("alpha.jpg", p_alpha, 
+       width = 8, height = 5, dpi = 300, units = "in" )
+
+############phylogenetic distance############
+
+mpse2 %<>% mp_cal_pd_metric(.abundance = RareAbundance, metric = all)
+p.pd_alpha <- mpse2 %>%
+  mp_plot_alpha(.alpha = c("NRI", "NTI", "PD"),
+                .group = sample_type,
+  ) +
+  scale_fill_manual(values=cols)+
+  scale_color_manual(values=cols) +
+  theme(legend.position="none",
+        strip.background = element_rect(colour=NA, fill="grey"))
+p.pd_alpha
+
+ggsave("pd_alpha.jpg", p.pd_alpha, 
+       width = 8, height = 5, dpi = 300, units = "in" )
+
+
+##########save the calculated alpha_diversity values#######
+
+p_alpha_data <- p_alpha$data
+pd_alpha_data <- p.pd_alpha$data
+# Save the extracted data as CSV files
+write.csv(p_alpha_data, "alpha_data.csv", row.names = FALSE)
+write.csv(pd_alpha_data, "pd_alpha_data.csv", row.names = FALSE
+
+
+
+############################relative abundance############
+# The relative abundance of all taxonomy for samples will be calculated
+mpse2 %<>% mp_cal_abundance(.abundance = RareAbundance)
+# The relative abundance of all taxonomy for group will be calculated
+mpse2 %<>% mp_cal_abundance(.abundance = RareAbundance, .group = group_id)
+
+#######################abundance of phyla##################
+
+# Show the abundance in different groups.
+fphylum <- mpse2 %>%
+  mp_plot_abundance(
+    .abundance = RareAbundance,
+    .group = sample_type,
+    taxa.class = Phylum,
+    topn = 20,
+    plot.group = TRUE
+  ) +
+  xlab(NULL) +
+  ylab("Relative abundance (%)") +
+  theme(legend.position = "none")
+pphylum2 <- mpse2 %>%
+  mp_plot_abundance(
+    .abundance = RareAbundance,
+    .group = location,
+    relative = TRUE,
+    taxa.class = Phylum,
+    topn = 20
+  ) +
+  xlab(NULL) +
+  ylab("Relative abundance (%)") +
+  theme(
+    legend.key.width = unit(0.5, "cm"),
+    legend.key.height = unit(0.5, "cm"),
+    legend.text = element_text(size=9)
+  )
+
+
+rel_abund_plot <- aplot::plot_list(pphylum2, fphylum, widths=c(10, 1))
+
+ggsave("rel_abund.jpg", rel_abund_plot, 
+       width = 10, height = 6, dpi = 300, units = "in" )
+
+#################Top 20 phyla in sample_type#############
+m4 <- mpse2 %>%
+  mp_plot_abundance(
+    .abundance=RareAbundance,
+    .group= sample_type,
+    taxa.class = Phylum,
+    topn = 20,
+    relative = TRUE,
+    plot.group = TRUE
+  )
+m4
+# Extract the Phylum data from the nested list
+t20phylum_data <- m4[["data"]]
+t20phylum_data
+t20phylum_cleaned <- t20phylum_data %>%
+  select(-c(nodeClass, RareAbundanceBygroup_id, RareAbundanceBySample))
+write.csv(t20phylum_cleaned, file = "Top20Phylum_data.csv", row.names = FALSE)
+
+
+##################################Plot top 10 phyla as barplot####################
+
+
+library(ggplot2)
+library(dplyr)
+data<-read.csv("Top20Phylum_data.csv")
+# Filter top 10 phyla for Sponge and Water sample types
+sponge_data <- data %>% 
+  filter(sample_type == "Sponge") %>%
+  arrange(desc(RelRareAbundanceBysample_type)) %>%
+  head(10) %>%
+  mutate(phylum_label = paste0(Phylum, " (", round(RelRareAbundanceBysample_type, 1), "%)"))
+
+water_data <- data %>% 
+  filter(sample_type == "Water") %>%
+  arrange(desc(RelRareAbundanceBysample_type)) %>%
+  head(10) %>%
+  mutate(phylum_label = paste0(Phylum, " (", round(RelRareAbundanceBysample_type, 1), "%)"))
+
+# Define a colour palette with more than 25 colors
+vibrant_palette <- c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3", "#FF7F00", 
+                     "#FFFF33", "#A65628", "#F781BF", "#999999", "#66C2A5", 
+                     "#FC8D66", "#8DA0CB", "#E78AC3", "#A6D854", "#FFD92F", 
+                     "#E5C494", "#B3B3B3", "#8DD3C7", "#FFFFB3", "#BEBADA", 
+                     "#FB8072", "#80B1D3", "#FDB462", "#B3DE69", "#FCCDE5")
+
+# Create horizontal barplot for Sponge samples
+sponge_barplot <- ggplot(sponge_data, aes(x = RelRareAbundanceBysample_type, y = reorder(phylum_label, RelRareAbundanceBysample_type))) +
+  geom_bar(stat = "identity", fill = vibrant_palette[1:10], color = "black") +
+  labs(title = "", x = "Relative abundance (%)", y = "") +
+  theme_classic() +
+  theme(axis.text.y = element_text(face = "bold", family = "Calibri")) +
+  scale_x_continuous(limits = c(0, 31), expand = c(0, 0)) +
+  theme(axis.line = element_line(colour = "black"))
+sponge_barplot
+# Create horizontal barplot for Water samples
+water_barplot <- ggplot(water_data, aes(x = RelRareAbundanceBysample_type, y = reorder(phylum_label, RelRareAbundanceBysample_type))) +
+  geom_bar(stat = "identity", fill = vibrant_palette[11:20], color = "black") +
+  labs(title = "", x = "Relative abundance (%)", y = "") +
+  theme_classic() +
+  theme(axis.text.y = element_text(face = "bold", family = "Calibri")) +
+  scale_x_continuous(limits = c(0, 31), expand = c(0, 0)) +
+  theme(axis.line = element_line(colour = "black"))
+water_barplot
+
+ggsave(filename = "spongetop10phyla.jpg", plot = sponge_barplot, 
+       width = 5, height = 4, dpi = 300, units = "in")
+ggsave(filename = "watertop10phyla.jpg", plot = water_barplot, 
+       width = 5, height = 4, dpi = 300, units = "in")
+
+
+############################top 20 genus in sample_type###########################
+g4 <- mpse2 %>%
+  mp_plot_abundance(
+    .abundance=RareAbundance,
+    .group= sample_type,
+    taxa.class = Genus,
+    topn = 20,
+    relative = TRUE,
+    plot.group = TRUE
+  )
+g4
+# Extract the Phylum data from the nested list
+t20genus_data <- g4[["data"]]
+t20genus_data
+t20genus_cleaned <- t20genus_data %>%
+  select(-c(nodeClass, RareAbundanceBygroup_id, RareAbundanceBySample))
+write.csv(t20genus_cleaned, file = "Top20Genus_data.csv", row.names = FALSE)
+
+
+##################################plot top 10 Genus as barplot####################
+
+library(ggplot2)
+library(dplyr)
+data_g<-read.csv("Top20Genus_data.csv")
+# Filter top 10 genera for Sponge and Water sample types, excluding "Others"
+sponge_data <- data_g %>% 
+  filter(sample_type == "Sponge", Genus != "Others") %>%
+  arrange(desc(RelRareAbundanceBysample_type)) %>%
+  head(10) %>%
+  mutate(genus_label = paste0(Genus, " (", round(RelRareAbundanceBysample_type, 1), "%)"))
+
+water_data <- data_g %>% 
+  filter(sample_type == "Water", Genus != "Others") %>%
+  arrange(desc(RelRareAbundanceBysample_type)) %>%
+  head(10) %>%
+  mutate(genus_label = paste0(Genus, " (", round(RelRareAbundanceBysample_type, 1), "%)"))
+
+# Define a vibrant color palette with more than 25 colors
+vibrant_palette <- c(
+  "#FF5733", "#33FF57", "#3357FF", "#FF33A8", "#A833FF",
+  "#FF8C33", "#33FFF2", "#FFC733", "#FF33D1", "#33FF8A",
+  "#8A33FF", "#FFD133", "#FF3367", "#33D1FF", "#A8FF33",
+  "#33FF8C", "#D133FF", "#FF3380", "#57FF33", "#3380FF",
+  "#FF5733", "#FF33C7", "#5733FF", "#C7FF33", "#33FF57"
+)
+# Create horizontal barplot for Sponge samples
+sponge_barplot_g <- ggplot(sponge_data, aes(x = RelRareAbundanceBysample_type, y = reorder(genus_label, RelRareAbundanceBysample_type))) +
+  geom_bar(stat = "identity", fill = vibrant_palette[1:10], color = "black") +
+  labs(title = "", x = "Relative abundance (%)", y = "") +
+  theme_classic() +
+  theme(axis.text.y = element_text(face = "bold", family = "Calibri")) +
+  scale_x_continuous(limits = c(0, 31), expand = c(0, 0)) +
+  theme(axis.line = element_line(colour = "black"))
+sponge_barplot_g
+# Create horizontal barplot for Water samples
+water_barplot_g <- ggplot(water_data, aes(x = RelRareAbundanceBysample_type, y = reorder(genus_label, RelRareAbundanceBysample_type))) +
+  geom_bar(stat = "identity", fill = vibrant_palette[11:20], color = "black") +
+  labs(title = "", x = "Relative abundance (%)", y = "") +
+  theme_classic() +
+  theme(axis.text.y = element_text(face = "bold", family = "Calibri")) +
+  scale_x_continuous(limits = c(0, 20), expand = c(0, 0)) +
+  theme(axis.line = element_line(colour = "black"))
+water_barplot_g
+
+ggsave(filename = "spongetop10genus.jpg", plot = sponge_barplot_g, 
+       width = 5, height = 4, dpi = 300, units = "in")
+ggsave(filename = "watertop10genus.jpg", plot = water_barplot_g, 
+       width = 5, height = 4, dpi = 300, units = "in")
+
+################################Top 2o phylum and genus in group_id################### 
+sp4 <- mpse2 %>%
+  mp_plot_abundance(
+    .abundance=RareAbundance,
+    .group= group_id,
+    taxa.class = Phylum,
+    topn = 20,
+    relative = TRUE,
+    plot.group = TRUE
+  )
+sp4
+
+sg4 <- mpse2 %>%
+  mp_plot_abundance(
+    .abundance=RareAbundance,
+    .group= group_id,
+    taxa.class = Genus,
+    topn = 20,
+    relative = TRUE,
+    plot.group = TRUE
+  )
+sg4
+# Extract the Phylum data from the nested list
+t20Psp_data <- sp4[["data"]]
+t20Psp_data
+t20Psp_cleaned <- t20Psp_data %>%
+  select(-c(nodeClass, RareAbundanceBysample_type, RareAbundanceBySample))
+write.csv(t20Psp_cleaned, file = "sample_Top20phylum_data.csv", row.names = FALSE)
+
+# Extract the Phylum data from the nested list
+t20Gsp_data <- sg4[["data"]]
+t20Gsp_data
+t20Gsp_cleaned <- t20Gsp_data %>%
+  select(-c(nodeClass, RareAbundanceBysample_type, RareAbundanceBySample))
+write.csv(t20Gsp_cleaned, file = "sample_Top20Genus_data.csv", row.names = FALSE)
+
+
+##########################phylum abundance in group_id############################
+  
+  
+  # Load data 
+  data_pg <- read.csv("sample_Top20phylum_data.csv")
+  
+  # Define a color palette
+  vibrant_palette <- c(
+    "#FF5733", "#33FF57", "#3357FF", "#FF33A8", "#A833FF",
+    "#FF8C33", "#33FFF2", "#FFC733", "#FF33D1", "#33FF8A",
+    "#8A33FF", "#FFD133", "#FF3367", "#33D1FF", "#A8FF33",
+    "#33FF8C", "#D133FF", "#FF3380", "#57FF33", "#3380FF"
+  )
+  
+  # Loop through each unique group_id to create and save separate plots
+  for(group in unique(data_pg$group_id)) {
+    # Filter the top 10 phyla for the current group_id
+    group_data <- data_pg %>%
+      filter(group_id == group, Phylum != "Others") %>%
+      arrange(desc(RelRareAbundanceBygroup_id)) %>%
+      slice_head(n = 10) %>%
+      mutate(phylum_label = paste0(Phylum, " (", round(RelRareAbundanceBygroup_id, 1), "%)"))
+    
+    # Create bar plot for the current group_id
+    group_plot <- ggplot(group_data, aes(x = reorder(phylum_label, RelRareAbundanceBygroup_id), 
+                                         y = RelRareAbundanceBygroup_id, fill = phylum_label)) +
+      geom_bar(stat = "identity", color = "black") +
+      coord_flip() +
+      labs(title = paste("Top 10 Phyla in Group", group), x = "", y = "Relative Abundance (%)") +
+      theme_classic() +
+      scale_fill_manual(values = vibrant_palette) +
+      theme(
+        axis.text.y = element_text(face = "bold", family = "Calibri"),
+        legend.position = "none"
+      )
+    
+    # Save the plot for the current group_id
+    ggsave(filename = paste0("top10_phyla_group_", group, ".jpg"), 
+           plot = group_plot, width = 6, height = 5, dpi = 300, units = "in")
+  }
+
+##############################genus abundance in group_id############
+  
+  # Load data 
+  data_gg <- read.csv("sample_Top20Genus_data.csv")
+  
+  # Define a color palette
+  vibrant_palette <- c(
+    "#FF5733", "#33FF57", "#3357FF", "#FF33A8", "#A833FF",
+    "#FF8C33", "#33FFF2", "#FFC733", "#FF33D1", "#33FF8A",
+    "#8A33FF", "#FFD133", "#FF3367", "#33D1FF", "#A8FF33",
+    "#33FF8C", "#D133FF", "#FF3380", "#57FF33", "#3380FF"
+  )
+  
+  # Loop through each unique group_id to create and save separate plots
+  for(group in unique(data_gg$group_id)) {
+    # Filter the top 10 phyla for the current group_id
+    group_data <- data_gg %>%
+      filter(group_id == group, Genus != "Others") %>%
+      arrange(desc(RelRareAbundanceBygroup_id)) %>%
+      slice_head(n = 10) %>%
+      mutate(Genus_label = paste0(Genus, " (", round(RelRareAbundanceBygroup_id, 1), "%)"))
+    
+    # Create bar plot for the current group_id
+    group_plot <- ggplot(group_data, aes(x = reorder(Genus_label, RelRareAbundanceBygroup_id), 
+                                         y = RelRareAbundanceBygroup_id, fill = Genus_label)) +
+      geom_bar(stat = "identity", color = "black") +
+      coord_flip() +
+      labs(title = paste("Top 10 Genus in Group", group), x = "", y = "Relative Abundance (%)") +
+      theme_classic() +
+      scale_fill_manual(values = vibrant_palette) +
+      theme(
+        axis.text.y = element_text(face = "bold", family = "Calibri"),
+        legend.position = "none"
+      )
+    
+    # Save the plot for the current group_id
+    ggsave(filename = paste0("top10_genus_group_", group, ".jpg"), 
+           plot = group_plot, width = 6, height = 5, dpi = 300, units = "in")
+  }
+  
+ 
+###################hellinger transform for ordination##############
+
+# hellinger transform
+mpse2 %<>%
+  mp_decostand(
+    .abundance = Abundance,
+    method = "hellinger"
+  )
+
+##################PCoA#################
+
+# distmethod
+# "unifrac", "wunifrac", "manhattan", "euclidean", "canberra", "bray", "kulczynski" ...(vegdist, dist)
+#we are using bray
+
+mpse2 %<>%
+  mp_cal_dist(
+    .abundance = hellinger,
+    distmethod = "bray"
+  )
+# PCoA analysis
+mpse2 %<>%
+  mp_cal_pcoa(
+    .abundance = hellinger,
+    distmethod = "bray"
+  )
+pcoaplot1 <- mpse2 %>%
+  mp_plot_ord(
+    .ord = pcoa,
+    .group = sample_type,
+    .starshape = sample_type,
+    .color = sample_type,
+    ellipse = TRUE,
+    show.legend = FALSE
+  ) +
+  scale_color_manual(
+    values = cols
+  ) +
+  scale_fill_manual(values = cols) +
+  scale_size_continuous(
+    range = c(1, 3),
+    guide = guide_legend(override.aes = list(starshape = 15))
+  ) +
+  theme(
+    legend.key.width = unit(0.5, "cm"),
+    legend.key.height = unit(0.5, "cm"),
+    legend.text = element_text(size= 9),
+    legend.title = element_text(size= 9)
+  )
+# first and third principal co-ordinates
+pcoaplot2 <- mpse2 %>%
+  mp_plot_ord(
+    .ord = pcoa,
+    .group = sample_type,
+    .starshape = sample_type,
+    .color = sample_type,
+    ellipse = TRUE,
+    .dim = c(1, 3),
+    show.legend = FALSE
+  ) +
+  scale_color_manual(
+    values = cols
+  ) +
+  scale_fill_manual(
+    values = cols
+  ) +
+  
+  theme(
+    legend.key.width = unit(0.5, "cm"),
+    legend.key.height = unit(0.5, "cm"),
+    legend.text = element_text(size = 9),
+    legend.title = element_text(size = 10)
+  )
+(pcoaplot1 | pcoaplot2)
+
+
+# Suppress legends in pcoaplot1
+pcoaplot1 <- pcoaplot1 + theme(legend.position = "none")
+
+# Ensure pcoaplot2 has the legends displayed
+pcoaplot2 <- pcoaplot2 + theme(legend.position = "right") 
+
+# Combine the plots: pcoaplot1 without legend and pcoaplot2 with legend
+combined_plot <- pcoaplot1 | pcoaplot2
+
+# Display the combined plot
+print(combined_plot)
+
+# Save the combined plot
+ggsave(
+  filename = "pcoa_combined_plot.jpg", 
+  plot = combined_plot, 
+  width = 12, height = 6, 
+  dpi = 300
+)
+
+
+
+#############bray distance between and among sample_type############
+
+pdist2 <- mpse2 %>%
+  mp_plot_dist(
+    .distmethod = bray,
+    .group = sample_type,
+    group.test = TRUE
+  ) +
+  scale_color_manual(
+    values = c("orange2", "violetred3", "#3399ff")
+  ) +
+  scale_fill_manual(
+    values = c("orange", "violetred3", "#3399ff")
+  )
+aplot::plot_list(pdist1, pdist2, widths = c(3, 1), nrow=1)
+pdist2
+ggsave(
+  filename = "bray_pcoa.jpg", 
+  plot = pdist2, 
+  width = 3, height = 5, 
+  dpi = 300
+)
+
+###############PERMANOVA#############
+
+mpse2 %<>% mp_adonis(.abundance = hellinger, distmethod = "bray",
+                     .formula = ~group_id, permutation = 9999, action = "add")
+mpse2 %>% mp_extract_internal_attr(name=adonis) %>% mp_fortify()
+
+
+
+#################clustering samples################
+
+mpse2 %<>% mp_cal_clust(.abundance = hellinger, distmethod = "bray", action = "add")
+hcsample <- mpse2 %>% mp_extract_internal_attr(name=SampleClust)
+
+# Extract top 10 Phyla
+class.tb <- mpse2 %>%
+  mp_extract_abundance(taxa.class = Class, topn = 10) %>%
+  tidyr::unnest(cols = RareAbundanceBySample) %>%
+  dplyr::rename(Class = "label")
+
+
+# Define a custom color palette with 20 colors
+custom_palette <- colorRampPalette(RColorBrewer::brewer.pal(12, "Set3"))(20)
+
+# Create the plot
+cplot1 <- ggtree(hcsample, layout = "rectangular") +
+  geom_treescale(fontsize = 2) +
+  geom_tippoint(mapping = aes(color = sample_type)) +
+  geom_fruit(
+    data = class.tb,
+    geom = geom_col,
+    mapping = aes(x = RelRareAbundanceBySample, y = Sample, fill = Class),
+    orientation = "y",
+    offset = 0.1,
+    pwidth = 3,
+    width = .6,
+    axis.params = list(
+      axis = "x",
+      title = "The relative abundance of Class (%)",
+      title.size = 4,
+      title.height = 0.04,
+      text.size = 2,
+      vjust = 1
+    )
+  ) +
+  geom_tiplab(as_ylab = TRUE) +
+  scale_color_manual(
+    values = cols,
+    guide = guide_legend(
+      keywidth = .9,
+      keyheight = .9,
+      title.theme = element_text(size = 12),
+      label.theme = element_text(size = 9)
+    )
+  ) +
+  scale_fill_manual(
+    values = custom_palette,
+    guide = guide_legend(
+      keywidth = .8,
+      keyheight = .8,
+      title.theme = element_text(size = 9),
+      label.theme = element_text(size = 8)
+    )
+  ) +
+  scale_x_continuous(expand = c(0, 0.01))
+
+cplot1
+ggsave(
+  filename = "cluster.jpg", 
+  plot = cplot1, 
+  width = 8, height = 5, 
+  dpi = 300
+)
+
+#######################CCA#######################
+
+mpse3 <- mpse2 %>%
+  mp_cal_cca(
+    .abundance = RareAbundance,
+    .formula = ~pH + conductivity + salinity + TDS + resistivity + DO_concentration + 
+      As + Zn + Fe + Cu + Pb + Cd + Cr
+  )
+
+mpse3
+
+mpse3 %>%
+  mp_extract_internal_attr(name=cca) %>%
+  anova()
+
+
+
+# fits environmental vectors onto cca
+mpse3 %<>%
+  mp_envfit(
+    .ord = cca,
+    .env = c(
+      pH,
+      conductivity,
+      salinity,
+      TDS,
+      resistivity,
+      DO_concentration,
+      As,
+      Zn,
+      Pb,
+      Fe,
+      Cu,
+      Cd,
+      Cr
+    ),
+    action = "add",
+    permutation = 9999
+  )
+
+
+# Extract the result of envfit analysis
+mpse3 %>% mp_extract_internal_attr(name=cca_envfit) %>% mp_fortify()
+
+cca_envfit_data <- mpse3 %>%
+  mp_extract_internal_attr(name = cca_envfit) %>%
+  mp_fortify()
+# View the first few rows to confirm the structure
+head(cca_envfit_data)
+
+# Save the data as a CSV file
+write.csv(cca_envfit_data, "cca_envfit_data.csv", row.names = FALSE)
+
+
+p_CCA <- mpse3 %>%
+  mp_plot_ord(
+    .ord = cca,
+    .group = sample_type,
+    .starshape = location,
+    show.side = FALSE,
+    show.envfit = TRUE,
+    colour = "black",
+    bg.colour = "white"
+  ) +
+  scale_starshape_manual(values=c(1, 13)) +
+  scale_fill_manual(
+    values = cols,
+    guide = guide_legend(
+      override.aes = list(starshape=15)
+    )
+  ) +
+  scale_size_continuous(
+    range = c(1, 3),
+    guide = guide_legend(override.aes = list(starshape=15))
+  ) +
+  theme(
+    legend.key.height = unit(0.8, "cm"),
+    legend.key.width = unit(0.8, "cm"),
+    legend.spacing.y = unit(0.02, "cm"),
+    legend.text = element_text(size = 9),
+    legend.title = element_text(size = 10),
+  )
+print(p_CCA)
+
+
+# visualization with envfit result
+p1 <- mpse3 %>%
+  mp_plot_ord(
+    .ord = cca,
+    .group = sample_type,
+    .starshape = location,
+    show.side = FALSE,
+    show.envfit = TRUE,
+    colour = "black",
+    bg.colour = "white"
+  ) +
+  scale_starshape_manual(values=c(1, 13, 15)) +
+  scale_fill_manual(
+    values = cols,
+    guide = guide_legend(
+      override.aes = list(starshape=15)
+    )
+  ) +
+  scale_size_continuous(
+    range = c(1, 3),
+    guide = guide_legend(override.aes = list(starshape=15))
+  ) +
+  theme(
+    legend.key.height = unit(0.8, "cm"),
+    legend.key.width = unit(0.3, "cm"),
+    legend.spacing.y = unit(0.02, "cm"),
+    legend.text = element_text(size = 9),
+    legend.title = element_text(size = 12),
+  )
+
+print(p1)
+ggsave(
+  filename = "cca.jpg", 
+  plot = p1, 
+  width = 4, height = 5, 
+  dpi = 300
+)
+
+
+
+###########PTE concentrations in sample types##########
+
+metadata <- read.csv("Metadata.csv")
+
+# Reshape the data to long format for ggplot2 and filter out zero values
+metadata_long <- metadata %>%
+  select(sample_id, sample_type, As, Zn, Fe, Cu, Pb, Cd, Cr) %>%  # Select relevant columns
+  pivot_longer(cols = As:Cr, names_to = "Metal", values_to = "Concentration") %>%
+  filter(Concentration > 0)  # Exclude zero values
+
+write.csv(metadata_long, file = "metadata_long.csv", row.names = FALSE)
+
+# Create the combined violin and box plot with statistical comparisons
+# Reshape the data to long format for ggplot2 and filter out zero values
+metadata_long <- metadata %>%
+  select(sample_id, sample_type, As, Zn, Fe, Cu, Pb, Cd, Cr) %>%  # Select relevant columns
+  pivot_longer(cols = As:Cr, names_to = "PTE", values_to = "Concentration") %>%
+  filter(Concentration > 0)  # Exclude zero values
+
+write.csv(metadata_long, file = "PTEconc.csv", row.names = FALSE)
+
+# Create the combined violin and box plot with statistical comparisons
+pte_conc <- ggplot(metadata_long, aes(x = sample_type, y = Concentration, fill = sample_type)) +
+  geom_violin(alpha = 0.4, color = "black") +  # Add violin plot
+  geom_boxplot(width = 0.1, alpha = 0.6, color = "black", outlier.shape = NA) +  # Boxplot without outliers
+  facet_wrap(~ PTE, scales = "free_x", nrow = 1) +  # Facet by metal type, in a single row
+  labs(title = "",
+       x = "", y = "Concentration log10 (mg/L)") +
+  scale_y_log10() +  # Log-transform the y-axis for all metals
+  scale_fill_manual(values = c("Water" = "#3399ff", "Sponge" = "orange2")) +
+  scale_color_manual(values = c("Water" = "#3399ff", "Sponge" = "orange2")) +
+  stat_compare_means(aes(group = sample_type), method = "wilcox.test", label = "p.signif") +  # Show significance stars
+  theme_classic() +  # Apply classic theme
+  theme(
+    plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+    axis.title.x = element_text(size = 8),
+    axis.title.y = element_text(size = 12),
+    strip.text = element_text(size = 10, face = "bold"),
+    axis.line = element_line(color = "black"),
+    axis.text = element_text(color = "black"),
+    axis.text.x = element_text(angle = 45, hjust = 1),  # Tilt x-axis labels
+    panel.border = element_rect(color = "black", fill = NA),  # Add borders
+    legend.position = "none"
+  )
+
+# Display the plot
+print(pte_conc)
+
+ggsave(
+  filename = "PTEconc.jpg", 
+  plot = pte_conc, 
+  width = 5, height = 4, 
+  dpi = 300
+)
+#####################biomarker genera#################
+
+# compute the kruskal_test and wilcox_test
+
+deres <- mpse2 %>%
+  mp_diff_analysis(
+    .abundance = RareAbundance,
+    .group = sample_type,
+    first.test.method = "kruskal_test",
+    filter.p = "pvalue",
+    first.test.alpha = 0.05,
+    strict = TRUE,
+    second.test.method = "wilcox_test",
+    second.test.alpha = 0.05,
+    subcl.min = 3,
+    subcl.test = TRUE,
+    ml.method = "lda",
+    ldascore = 3,
+    action = "get"  # Extract the differential abundance result
+  )
+
+# Check the structure of the result object
+str(deres)
+
+# To get a summary of the results
+summary(deres)
+
+# Get significantly different taxa
+significant_taxa <- deres@taxda
+head(significant_taxa)  # View first few rows
+
+diff_results <- deres %>% as.data.frame()
+head(diff_results)
+write.csv(diff_results, file = "differential_abundance_results.csv", row.names = FALSE)
+
+#############analysis and plot###########
+
+# Load differential abundance results
+diff_abundance <- read_csv("differential_abundance_results.csv")
+
+# Filter for identified genera (those starting with "g__") and significant results
+identified_genera <- diff_abundance %>%
+  filter(grepl("^g__", genus)) %>%         # Adjust 'genus' to match your column name
+  filter(fdr < 0.05 & pvalue < 0.05)       # Filter by FDR and p-value
+
+# Reorder: First 'Sponge' by descending LDA, then 'Water' by descending LDA
+identified_genera <- identified_genera %>%
+  arrange(sample_type, desc(LDAmean)) %>%
+  mutate(
+    genus = factor(genus, levels = rev(unique(genus)))  # Ensure higher-to-lower order
+  )
+# Generate the bar plot
+biomarker_genera <- ggplot(identified_genera, aes(x = genus, y = LDAmean, fill = sample_type)) +
+  geom_bar(stat = "identity", width = 0.8) +
+  coord_flip() +
+  scale_fill_manual(values = c("Water" = "#3399ff", "Sponge" = "orange2")) +
+  labs(
+    x = "", 
+    y = "LDA score", 
+    title = "",
+    fill = "Sample Type"
+  ) +
+  theme_classic() +
+  theme(
+    axis.text.y = element_text(size = 8, face = "bold"),  # Bold genus names
+    axis.line = element_line(size = 0.5, color = "black"),  # Border on axes
+    panel.border = element_rect(color = "black", fill = NA),  # Border around the plot
+    plot.title = element_text(size = 14, face = "bold")
+  )
+
+# Display the plot
+biomarker_genera
+
+# Save the plot
+ggsave("biomarker_genera.jpg", biomarker_genera, 
+       width = 8, height = 6, dpi = 300)
+
+
+################correltional analysiswith microeco################
+
+#make microeco object from qiime2 output
+
+tm <- qiime2meco("tableNoFilt.qza", sample_table = "Metadata_n.txt", taxonomy_table = "taxonomyNoFilt.qza", phylo_tree = "treeNoFilt.qza", rep_fasta = "repseqsNoFilt.qza", auto_tidy = TRUE)
+
+tm
+
+taxonomy_table_16S %<>% tidy_taxonomy
+
+# use R subset function to filter taxa in tax_table
+tm$tax_table %<>% base::subset(Kingdom == "k__Archaea" | Kingdom == "k__Bacteria")
+
+# another way with grepl function
+tm$tax_table %<>% .[grepl("Bacteria|Archaea", .$Kingdom), ]
+tm$filter_pollution(taxa = c("mitochondria", "chloroplast"))
+tm
+########################
+
+
+metadata_df <- read.csv("Metadata_n.csv")
+
+# Extract the environmental data columns (pH to Cr)
+env_data <- metadata_df[, c(1, 6:18)]  # Selecting columns 1 and 6 to 18 from metadata
+# Ensure row names of env_data and sample_table match
+rownames(env_data) <- metadata_df$sampleid
+
+
+# Add environmental data to the microeco object
+t1$env_data <- data.frame(tm$env_data, env_data[rownames(tm$env_data), ])
+t1 <- trans_abund$new(dataset = tm, taxrank = "Genus", ntaxa = 40)
+
+# first create trans_diff object
+
+t2 <- trans_diff$new(dataset = tm, method = "rf", group = "sample_type", taxa_level = "Genus", ntaxa = 40)
+
+# then create trans_env object
+t1 <- trans_env$new(dataset = tm, add_data = env_data)
+
+# calculate correlations for different groups using parameter by_group
+t1$cal_cor(by_group = "sample_type", use_data = "other", p_adjust_method = "fdr", other_taxa = t2$res_diff$Taxa[1:40])
+# return t1$res_cor
+t1$plot_cor()
+
+# Store the correlation plot
+p <- t1$plot_cor()
+
+
+# Customize the color gradient for correlations
+#PLT<- p + scale_fill_gradient2(low = "blue", mid = "gold2", high = "forestgreen", midpoint = 0) +
+PLT<- p + scale_fill_gradient2(low = "orangered4", mid = "gold2", high = "chartreuse4", midpoint = 0) + 
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, face = "bold"),
+    axis.title.x = element_blank(),
+    axis.text.y = element_text(),
+    axis.title.y = element_text(margin = margin(r = 5)),
+    strip.background = element_rect(fill = "lightgray"),  # Background for sample type
+    strip.text = element_text(face = "bold"),
+    panel.border = element_rect(color = "black", fill = NA, size = 1),  # Border around heatmap facets
+    legend.position = "right"
+  )
+
+PLT
+ggsave("cor_heatmap.jpg", plot = PLT, dpi = 300, width = 12, height = 7, units = "in")
+
+
+
+########################################picrustplot##########################
+
+# Read in your cleaned dataset
+
+combined <- read.csv("AP.csv", header = TRUE)
+
+# Create two new DataFrames based on the "class" column
+data_amr <- combined[combined$class == "AMR", ] %>% mutate_at(vars(5:40), round)
+data_mitr <- combined[combined$class == "MITR", ] %>% mutate_at(vars(5:40), round)
+# Separate water and sponge sample columns
+water_samples <- c("S1.1", "S1.2", "S1.3", "S2.1", "S2.2", "S2.3", 
+                   "S3.1", "S3.2", "S3.3", "S4.1", "S4.2", "S4.3", 
+                   "S5.1", "S5.2", "S5.3", "S6.1", "S6.2", "S6.3")
+
+sponge_samples <- c("SP1.1", "SP1.2", "SP1.3", "SP2.1", "SP2.2", "SP2.3", 
+                    "SP3.1", "SP3.2", "SP3.3", "SP4.1", "SP4.2", "SP4.3", 
+                    "SP5.1", "SP5.2", "SP5.3", "SP6.1", "SP6.2", "SP6.3")
+
+# Create a condition vector
+conds <- c(rep("Water", length(water_samples)), rep("Sponge", length(sponge_samples)))
+
+
+#######################################AMR######################################################
+
+# Perform ALDEx2 analysis
+aldex_results_amr <- aldex(data_amr[, c(water_samples, sponge_samples)], conds, mc.samples = 128, denom = "all", test = "t")
+
+# Step 2: Create a new column ko_annotation by merging KO_ID and annotation
+data_amr <- data_amr %>%
+  mutate(ko_annotation = paste(KO_ID, annotation, sep = ":"))
+
+# Step 3: Ensure row names match the aldex_results
+ko_mapping_amr <- data_amr %>%
+  dplyr::select(ko_annotation) %>%
+  mutate(row_name = rownames(data_amr))  # Ensure a matching key for merging
+
+# Step 4: Merge KO annotations with aldex_results
+aldex_results_amr <- aldex_results_amr %>%
+  rownames_to_column("row_name") %>%  # Temporarily convert rownames to a column
+  left_join(ko_mapping_amr, by = "row_name") %>%  # Merge with the ko_annotation column
+  column_to_rownames("row_name")  # Convert back to rownames
+
+# Extract significant results (adjusted p-value < 0.05)
+significant_results_amr <- aldex_results_amr %>%
+  filter(we.eBH < 0.05) %>%
+  arrange(diff.btw)
+
+# Prepare data for mirrored plot
+significant_results_amr <- significant_results_amr %>%
+  mutate(group = ifelse(diff.btw > 0, "Sponge", "Water"),  # Label based on effect direction
+         value = abs(diff.btw))  # Use absolute values for plotting
+# Add a new column to distinguish between higher expression in water vs sponge
+significant_results_amr <- significant_results_amr %>%
+  mutate(group = ifelse(diff.btw > 0, "Sponge", "Water"))  # Determine direction
+
+# Plot: Mirrored Horizontal Bar Plot
+plot_amr <- ggplot(significant_results_amr, 
+                   aes(x = reorder(ko_annotation, diff.btw), 
+                       y = diff.btw, fill = group)) +
+  geom_bar(stat = "identity", width = 0.8) +
+  coord_flip() +
+  labs(x = "", y = "Log2 Fold Change (Sponge / Water)") +
+  theme_classic() +  # Use classic theme
+  scale_fill_manual(values = c("Sponge" = "orange2", "Water" = "#3399ff")) +
+  theme(
+    # Set background to white explicitly
+    plot.background = element_rect(fill = "white", color = NA),
+    
+    # X and Y axis lines in black
+    axis.line = element_line(color = "black"),
+    
+    # Bold KO annotations (Y axis labels)
+    axis.text.y = element_text(face = "bold", size = 10, color = "black"),
+    
+    # Customizing the legend position and title
+    legend.position = "bottom", 
+    legend.title = element_text(face = "bold"),
+    
+    # Plot title formatting
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5),
+    
+    # Remove strip background (if needed for facets)
+    strip.background = element_blank()
+  ) +
+  # Add dashed line at y = 0
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  scale_y_continuous(limits = c(-8, 8), breaks = seq(-8, 8, by = 2))
+
+
+plot_amr
+
+# Save the plot
+ggsave("amr.jpg", plot_amr, 
+       width = 12, height = 8, dpi = 300)
+
+
+# Save significant results as a table (CSV)
+write.csv(significant_results_amr, "amr_significant.csv", row.names = FALSE)
+
+
+#######################MITR#################
+
+# Perform ALDEx2 analysis
+aldex_results_mitr <- aldex(data_mitr[, c(water_samples, sponge_samples)], conds, mc.samples = 128, denom = "all", test = "t")
+
+# Step 2: Create a new column ko_annotation by merging KO_ID and annotation
+data_mitr <- data_mitr %>%
+  mutate(ko_annotation = paste(KO_ID, annotation, sep = ":"))
+
+# Step 3: Ensure row names match the aldex_results
+ko_mapping_mitr <- data_mitr %>%
+  dplyr::select(ko_annotation) %>%
+  mutate(row_name = rownames(data_mitr))  # Ensure a matching key for merging
+
+# Step 4: Merge KO annotations with aldex_results
+aldex_results_mitr <- aldex_results_mitr %>%
+  rownames_to_column("row_name") %>%  # Temporarily convert rownames to a column
+  left_join(ko_mapping_mitr, by = "row_name") %>%  # Merge with the ko_annotation column
+  column_to_rownames("row_name")  # Convert back to rownames
+
+# Extract significant results (adjusted p-value < 0.05)
+significant_results_mitr <- aldex_results_mitr %>%
+  filter(we.eBH < 0.05) %>%
+  arrange(diff.btw)
+
+# Prepare data for mirrored plot
+significant_results_mitr <- significant_results_mitr %>%
+  mutate(group = ifelse(diff.btw > 0, "Sponge", "Water"),  # Label based on effect direction
+         value = abs(diff.btw))  # Use absolute values for plotting
+# Add a new column to distinguish between higher expression in water vs sponge
+significant_results_mitr <- significant_results_mitr %>%
+  mutate(group = ifelse(diff.btw > 0, "Sponge", "Water"))  # Determine direction
+
+# Plot: Mirrored Horizontal Bar Plot
+plot_mitr <- ggplot(significant_results_mitr, 
+                   aes(x = reorder(ko_annotation, diff.btw), 
+                       y = diff.btw, fill = group)) +
+  geom_bar(stat = "identity", width = 0.8) +
+  coord_flip() +
+  labs(x = "", y = "Log2 Fold Change (Sponge / Water)") +
+  theme_classic() +  # Use classic theme
+  scale_fill_manual(values = c("Sponge" = "orange2", "Water" = "#3399ff")) +
+  theme(
+    # Set background to white explicitly
+    plot.background = element_rect(fill = "white", color = NA),
+    
+    # X and Y axis lines in black
+    axis.line = element_line(color = "black"),
+    
+    # Bold KO annotations (Y axis labels)
+    axis.text.y = element_text(face = "bold", size = 10, color = "black"),
+    
+    # Customizing the legend position and title
+    legend.position = "bottom", 
+    legend.title = element_text(face = "bold"),
+    
+    # Plot title formatting
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5),
+    
+    # Remove strip background (if needed for facets)
+    strip.background = element_blank()
+  ) +
+  # Add dashed line at y = 0
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  scale_y_continuous(limits = c(-8, 8), breaks = seq(-8, 8, by = 2))
+
+
+plot_mitr
+
+# Save the plot
+ggsave("mitr.jpg", plot_mitr, 
+       width = 12, height = 8, dpi = 300)
+
+
+
+# Save significant results as a table (CSV)
+write.csv(significant_results_mitr, "mitr_significant.csv", row.names = FALSE)
+
+##############################combine the plots########################
+
+
+# Remove the y-axis and x-axis labels from the upper plot (plot_mitr)
+plot_mitr <- plot_mitr + 
+  theme(legend.position = "none", 
+        axis.title.y = element_blank(),  # Remove Y-axis label
+        axis.title.x = element_blank())  # Remove X-axis label
+
+# Remove legend from the lower plot (plot_amr)
+plot_amr <- plot_amr + theme(legend.position = "none")
+
+# Combine the two plots vertically, collecting the legend on the right side
+combined_plot <- (plot_mitr / plot_amr) + 
+  plot_layout(guides = "collect") & 
+  theme(legend.position = "right")
+
+# Set the legend title to "Group"
+combined_plot <- combined_plot & labs(fill = "Group")
+
+# Print the final combined plot
+print(combined_plot)
+
+ggsave("combined_picrustplot.jpg", combined_plot, 
+       width = 12, height = 8, dpi = 300)
