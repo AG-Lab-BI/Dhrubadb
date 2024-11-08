@@ -1,13 +1,10 @@
-qiime tools import --type "SampleData[PairedEndSequencesWithQuality]" --input-format PairedEndFastqManifestPhred33V2 --input-path /DATA/Dhruba/New_Run_DB/SEQ_NCBI_SUBMISSION/manifest.tsv --output-path /DATA/Dhruba/New_Run_DB/SEQ_NCBI_SUBMISSION/demuxed.qza
+qiime tools import --type "SampleData[PairedEndSequencesWithQuality]" --input-format PairedEndFastqManifestPhred33V2 --input-path manifest.tsv --output-path demuxed.qza
 
 qiime demux summarize --i-data demuxed.qza --o-visualization demuxed.qzv
 
-
-qiime dada2 denoise-paired --i-demultiplexed-seqs demuxed.qza --p-trim-left-f 19 --p-trim-left-r 20 --p-trunc-len-f 145 --p-trunc-len-r 175 --o-table /DATA/Dhruba/New_Run_DB/SEQ_NCBI_SUBMISSION/tableNoFilt.qza --o-representative-sequences repseqsNoFilt.qza --o-denoising-stats denoising-statsNoFilt.qza --p-n-threads 25                       
-
+qiime dada2 denoise-paired --i-demultiplexed-seqs demuxed.qza --p-trim-left-f 19 --p-trim-left-r 20 --p-trunc-len-f 145 --p-trunc-len-r 175 --o-table tableNoFilt.qza --o-representative-sequences repseqsNoFilt.qza --o-denoising-stats denoising-statsNoFilt.qza --p-n-threads 25                       
 
 qiime feature-table summarize --i-table tableNoFilt.qza --m-sample-metadata-file metadataArranged.tsv --o-visualization tableNoFilt.qzv
-
 
 qiime feature-table tabulate-seqs --i-data repseqsNoFilt.qza --o-visualization repseqsNoFilt.qzv
 
@@ -34,7 +31,6 @@ qiime rescript dereplicate \
     --o-dereplicated-sequences silva-138.1-ssu-nr99-seqs-derep-uniq.qza \
     --o-dereplicated-taxa silva-138.1-ssu-nr99-tax-derep-uniq.qza
  
-
 qiime feature-classifier extract-reads --i-sequences silva-138.1-ssu-nr99-seqs-derep-uniq.qza --p-f-primer GTGYCAGCMGCCGCGGTAA --p-r-primer GGACTACNVGGGTWTCTAAT --p-n-jobs 2 --p-read-orientation 'forward' --o-reads silva-138.1-ssu-nr99-seqs-515f-806r.qza
 
 qiime rescript dereplicate --i-sequences silva-138.1-ssu-nr99-seqs-derep-uniq.qza --i-taxa silva-138.1-ssu-nr99-tax-derep-uniq.qza --p-mode 'uniq' --o-dereplicated-sequences silva-138.1-ssu-nr99-seqs-515f-806r-uniq.qza --o-dereplicated-taxa  silva-138.1-ssu-nr99-tax-515f-806r-derep-uniq.qza
