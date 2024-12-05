@@ -4,6 +4,8 @@ This repository provides supporting information for the manuscript "**Bacterial 
 
 **DB_Rscript** provides the R code to reproduce all analyses and statistical tests and to reproduce all figures.  
 **DB_qiime2_code** provides the Linux terminal code used for all QIIME2 analysis.
+**All_KO_hits**  annotated KO hits obtained from PICRUt2 run.
+**AP** the selected AMR and MITR hits
 
 The raw data will be provided as an **R workspace** and associated files upon manuscript acceptance or upon reasonable request to the first author, who can be reached at **bhattacharya.dhruba95@gmail.com**.
 
