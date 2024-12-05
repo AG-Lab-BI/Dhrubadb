@@ -894,14 +894,12 @@ tm
 taxonomy_table_16S %<>% tidy_taxonomy
 
 # use R subset function to filter taxa in tax_table
-tm$tax_table %<>% base::subset(Kingdom == "k__Archaea" | Kingdom == "k__Bacteria")
 
-# another way with grepl function
 tm$tax_table %<>% .[grepl("Bacteria|Archaea", .$Kingdom), ]
 tm$filter_pollution(taxa = c("mitochondria", "chloroplast"))
 tm
-########################
 
+########################
 
 metadata_df <- read.csv("Metadata_n.csv")
 
@@ -977,16 +975,16 @@ conds <- c(rep("Water", length(water_samples)), rep("Sponge", length(sponge_samp
 # Perform ALDEx2 analysis
 aldex_results_amr <- aldex(data_amr[, c(water_samples, sponge_samples)], conds, mc.samples = 128, denom = "all", test = "t")
 
-# Step 2: Create a new column ko_annotation by merging KO_ID and annotation
+# Create a new column ko_annotation by merging KO_ID and annotation
 data_amr <- data_amr %>%
   mutate(ko_annotation = paste(KO_ID, annotation, sep = ":"))
 
-# Step 3: Ensure row names match the aldex_results
+# Ensure row names match the aldex_results
 ko_mapping_amr <- data_amr %>%
   dplyr::select(ko_annotation) %>%
   mutate(row_name = rownames(data_amr))  # Ensure a matching key for merging
 
-# Step 4: Merge KO annotations with aldex_results
+# Merge KO annotations with aldex_results
 aldex_results_amr <- aldex_results_amr %>%
   rownames_to_column("row_name") %>%  # Temporarily convert rownames to a column
   left_join(ko_mapping_amr, by = "row_name") %>%  # Merge with the ko_annotation column
@@ -1055,16 +1053,16 @@ write.csv(significant_results_amr, "amr_significant.csv", row.names = FALSE)
 # Perform ALDEx2 analysis
 aldex_results_mitr <- aldex(data_mitr[, c(water_samples, sponge_samples)], conds, mc.samples = 128, denom = "all", test = "t")
 
-# Step 2: Create a new column ko_annotation by merging KO_ID and annotation
+# Create a new column ko_annotation by merging KO_ID and annotation
 data_mitr <- data_mitr %>%
   mutate(ko_annotation = paste(KO_ID, annotation, sep = ":"))
 
-# Step 3: Ensure row names match the aldex_results
+# Ensure row names match the aldex_results
 ko_mapping_mitr <- data_mitr %>%
   dplyr::select(ko_annotation) %>%
   mutate(row_name = rownames(data_mitr))  # Ensure a matching key for merging
 
-# Step 4: Merge KO annotations with aldex_results
+# Merge KO annotations with aldex_results
 aldex_results_mitr <- aldex_results_mitr %>%
   rownames_to_column("row_name") %>%  # Temporarily convert rownames to a column
   left_join(ko_mapping_mitr, by = "row_name") %>%  # Merge with the ko_annotation column
