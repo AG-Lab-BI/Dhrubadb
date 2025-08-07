@@ -6,7 +6,7 @@ This repository provides supporting information for the manuscript "**Bacterial 
 **DB_qiime2_code**: Provides the Linux terminal code used for all QIIME2 analyses.  
 **All_KO_hits**: Annotated KO hits obtained from the PICRUSt2 run.  
 **AP**: Selected AMR (Antimicrobial Resistance) and MITR (Metal Ion Transport and Resistance) hits.  
-**Supporting_information**: All the supporting figures and tables of the article.
+**Supporting_info.pdf**: All the supporting figures and tables of the article.
 
 The raw data will be provided as an **R workspace** and associated files upon manuscript acceptance or upon reasonable request to the first author, who can be reached at **abhrajyoti.ghosh@jcbose.ac.in**.
 
