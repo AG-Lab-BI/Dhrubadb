@@ -6,7 +6,7 @@ This repository provides supporting information for the article "**Bacterial div
 **DB_qiime2_code**: Provides the Linux terminal code used for all QIIME2 analyses.  
 **All_KO_hits**: Annotated KO hits obtained from the PICRUSt2 run.  
 **AP**: Selected AMR (Antimicrobial Resistance) and MITR (Metal Ion Transport and Resistance) hits.  
-**Supplemntal files.pdf**: All the supporting figures and tables of the article.
+**supplemntal files.pdf**: All the supporting figures and tables of the article.
 
 If you have questions or concerns with these files, or trouble downloading them, please contact **abhrajyoti.ghosh@jcbose.ac.in**.
 
