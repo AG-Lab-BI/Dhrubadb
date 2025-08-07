@@ -6,7 +6,7 @@ This repository provides supporting information for the manuscript "**Bacterial 
 **DB_qiime2_code** provides the Linux terminal code used for all QIIME2 analysis.  
   **All_KO_hits**  annotated KO hits obtained from PICRUt2 run.    
   **AP** the selected AMR and MITR hits.
-  **Supporting_information** all the supporting figures and tables of the article
+  **Supporting_information** all the supporting figures and tables of the article.
 
 The raw data will be provided as an **R workspace** and associated files upon manuscript acceptance or upon reasonable request to the first author, who can be reached at **abhrajyoti.ghosh@jcbose.ac.in**.
 
