@@ -2,11 +2,11 @@
 
 This repository provides supporting information for the manuscript "**Bacterial diversity in the freshwater sponges of Sundarban and their potential role in biomonitoring toxic element pollutions**" which has been submitted to Microbiology Spectrum journal.
 
-**DB_Rscript** provides the R code to reproduce all analyses and statistical tests and to reproduce all figures.  
-**DB_qiime2_code** provides the Linux terminal code used for all QIIME2 analysis.  
-  **All_KO_hits**  annotated KO hits obtained from PICRUt2 run.    
-  **AP** the selected AMR and MITR hits.
-  **Supporting_information** all the supporting figures and tables of the article.
+**DB_Rscript**: Provides the R code to reproduce all analyses, statistical tests, and figures.  
+**DB_qiime2_code**: Provides the Linux terminal code used for all QIIME2 analyses.  
+**All_KO_hits**: Annotated KO hits obtained from the PICRUSt2 run.  
+**AP**: Selected AMR (Antimicrobial Resistance) and MITR (Metal Ion Transport and Resistance) hits.  
+**Supporting_information**: All the supporting figures and tables of the article.
 
 The raw data will be provided as an **R workspace** and associated files upon manuscript acceptance or upon reasonable request to the first author, who can be reached at **abhrajyoti.ghosh@jcbose.ac.in**.
 
